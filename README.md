@@ -28,7 +28,7 @@ This sample app demonstrates stablecoin FX swaps between USDC and EURC using the
 
 - Node.js 20+ and npm
 - Docker (for local Supabase)
-- A [Circle](https://console.circle.com) account with API key + entity secret. The same API key also authenticates App Kit swaps, so no separate kit key is needed
+- A [Circle](https://console.circle.com) account with API key + entity secret. The same API key authenticates App Kit swaps
 
 ## Getting Started
 

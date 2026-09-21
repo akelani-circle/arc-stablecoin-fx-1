@@ -24,8 +24,7 @@ import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 import { clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
 
-// Swaps authenticate with the Circle API key (CIRCLE_API_KEY), the same one the wallets use.
-// The separate kit key (`kitKey`) is deprecated in @circle-fin/app-kit and no longer needed.
+// Swaps authenticate with CIRCLE_API_KEY.
 
 let cachedKit: AppKit | null = null;
 let cachedAdapter: ReturnType<typeof createCircleWalletsAdapter> | null = null;

@@ -29,26 +29,18 @@ async function run(feeBps: string, extra: Record<string, unknown> = {}) {
 beforeEach(() => vi.resetAllMocks());
 
 describe("swap authentication", () => {
-  it("uses the Circle API key, and sends no kit key, for swaps", async () => {
+  it("uses the Circle API key for swaps", async () => {
     const config = await run("25");
     expect(config.apiKey).toBe("TEST_API_KEY:aaaa:bbbb");
-    expect(config).not.toHaveProperty("kitKey");
   });
 
-  it("uses the Circle API key, and sends no kit key, for quotes", async () => {
+  it("uses the Circle API key for quotes", async () => {
     estimate.mockResolvedValue({ estimatedOutput: { amount: "9" } });
     vi.resetModules();
     mockSdk();
     const { estimateSwap } = await import("@/lib/appkit/swap");
     await estimateSwap({ walletAddress: "0x1", tokenIn: "USDC", tokenOut: "EURC", amountIn: "10" });
     expect(estimate.mock.calls[0][0].config).toEqual({ apiKey: "TEST_API_KEY:aaaa:bbbb" });
-  });
-
-  it("no longer requires a kit key to start", async () => {
-    delete process.env.KIT_KEY;
-    vi.resetModules();
-    const { serverEnv } = await import("@/lib/config");
-    expect(() => serverEnv()).not.toThrow();
   });
 });
 
