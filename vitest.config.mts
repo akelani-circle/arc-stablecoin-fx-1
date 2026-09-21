@@ -16,20 +16,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { NextConfig } from "next";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
 
-// Applied to every route. No Content-Security-Policy here: Next.js needs per-request nonces for
-// its inline scripts, so a static one would either break the app or be too loose to help.
-export const securityHeaders = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-];
-
-const nextConfig: NextConfig = {
-  async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+// Unit tests: no network, database or wallet credentials required.
+export default defineConfig({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // server-only throws outside a React Server Components build; tests import those modules.
+      "server-only": fileURLToPath(new URL("./tests/helpers/server-only.ts", import.meta.url)),
+    },
   },
-};
-
-export default nextConfig;
+  test: {
+    environment: "node",
+    include: ["tests/unit/**/*.test.ts"],
+    restoreMocks: true,
+  },
+});

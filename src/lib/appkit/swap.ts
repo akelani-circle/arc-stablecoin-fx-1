@@ -24,6 +24,8 @@ import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 import { clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
 
+// Swaps authenticate with CIRCLE_API_KEY.
+
 let cachedKit: AppKit | null = null;
 let cachedAdapter: ReturnType<typeof createCircleWalletsAdapter> | null = null;
 
@@ -78,7 +80,7 @@ export async function estimateSwap({
     tokenIn,
     tokenOut,
     amountIn,
-    config: { kitKey: env.KIT_KEY },
+    config: { apiKey: env.CIRCLE_API_KEY },
   });
 
   const amountOut = result.estimatedOutput.amount;
@@ -109,13 +111,14 @@ export async function executeSwap({
 }: ExecuteInput): Promise<ExecuteResult> {
   const env = serverEnv();
   const baseConfig = {
-    kitKey: env.KIT_KEY,
+    apiKey: env.CIRCLE_API_KEY,
     slippageBps,
     ...(stopLimit ? { stopLimit } : {}),
-    customFee: {
-      percentageBps: env.APP_FEE_BPS,
-      recipientAddress: env.APP_FEE_RECIPIENT,
-    },
+    // The SDK rejects a custom fee of 0 bps (it must be above 0 and at most 10000), so with
+    // APP_FEE_BPS=0 the fee is left out instead of failing every swap.
+    ...(env.APP_FEE_BPS > 0
+      ? { customFee: { percentageBps: env.APP_FEE_BPS, recipientAddress: env.APP_FEE_RECIPIENT } }
+      : {}),
   };
   const params = {
     from: { adapter: adapter(), chain: chain(), address: walletAddress },
@@ -137,16 +140,10 @@ export async function executeSwap({
         config: { ...baseConfig, allowanceStrategy: "approve" },
       });
     } else {
-      const cause = (err as Record<string, unknown>)?.cause as Record<string, unknown> | undefined;
-      const trace = cause?.trace as Record<string, unknown> | undefined;
-      const rawError = trace?.rawError as Record<string, unknown> | undefined;
-      console.error("[executeSwap] kit().swap() failed — top-level:", String(err));
-      console.error("[executeSwap] cause.trace.chain:", trace?.chain);
-      console.error("[executeSwap] cause.trace.rawError (string):", String(rawError));
-      console.error("[executeSwap] cause.trace.rawError.message:", rawError?.message);
-      console.error("[executeSwap] cause.trace.rawError.name:", rawError?.name);
-      console.error("[executeSwap] cause.trace.rawError.stack:", rawError?.stack);
-      console.error("[executeSwap] cause.trace.rawError (full JSON):", JSON.stringify(rawError, Object.getOwnPropertyNames(rawError ?? {})));
+      // One line: the SDK's raw error can carry request details, so it is logged here on the
+      // server and never shown to the user (see toUserFacingError).
+      const cause = (err as { cause?: { message?: unknown } })?.cause?.message;
+      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${String(cause)}` : "");
       throw err;
     }
   }
