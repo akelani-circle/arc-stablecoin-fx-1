@@ -18,9 +18,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
-    "@circle-fin/adapter-circle-wallets": "^1.2.8",
-    "@circle-fin/app-kit": "^1.4.2",
-    "@circle-fin/developer-controlled-wallets": "^10.3.1",
+    "@circle-fin/adapter-circle-wallets": "^1.8.0",
+    "@circle-fin/app-kit": "^1.15.2",
+    "@circle-fin/developer-controlled-wallets": "^10.8.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "class-variance-authority": "^0.7.1",
@@ -46,6 +46,7 @@
     "supabase": "^2.95.5",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vite": "^8.3.0",
     "vitest": "^5.0.1"
   }
 }

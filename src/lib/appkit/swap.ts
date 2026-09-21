@@ -24,11 +24,8 @@ import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 import { clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
 
-// `config.kitKey` below is being deprecated on the SDK side in favor of a
-// unified `apiKey` field that accepts either a kit key or a plain API key —
-// `kitKey` stays supported until it's removed. The currently pinned
-// @circle-fin/app-kit build's SwapConfig doesn't expose `apiKey` yet; switch
-// this over once it does.
+// Swaps authenticate with the Circle API key (CIRCLE_API_KEY), the same one the wallets use.
+// The separate kit key (`kitKey`) is deprecated in @circle-fin/app-kit and no longer needed.
 
 let cachedKit: AppKit | null = null;
 let cachedAdapter: ReturnType<typeof createCircleWalletsAdapter> | null = null;
@@ -84,7 +81,7 @@ export async function estimateSwap({
     tokenIn,
     tokenOut,
     amountIn,
-    config: { kitKey: env.KIT_KEY },
+    config: { apiKey: env.CIRCLE_API_KEY },
   });
 
   const amountOut = result.estimatedOutput.amount;
@@ -115,7 +112,7 @@ export async function executeSwap({
 }: ExecuteInput): Promise<ExecuteResult> {
   const env = serverEnv();
   const baseConfig = {
-    kitKey: env.KIT_KEY,
+    apiKey: env.CIRCLE_API_KEY,
     slippageBps,
     ...(stopLimit ? { stopLimit } : {}),
     // The SDK rejects a custom fee of 0 bps (it must be above 0 and at most 10000), so with

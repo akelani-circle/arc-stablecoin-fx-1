@@ -23,7 +23,6 @@ process.env.NEXT_PUBLIC_ARC_CHAIN = "Arc_Testnet";
 process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
 process.env.CIRCLE_API_KEY = "TEST_API_KEY:aaaa:bbbb";
 process.env.CIRCLE_ENTITY_SECRET = "0".repeat(64);
-process.env.KIT_KEY = "KIT_KEY:test";
 process.env.APP_FEE_BPS = "25";
 process.env.APP_FEE_RECIPIENT = "0x000000000000000000000000000000000000dEaD";
 delete process.env.CIRCLE_WEBHOOK_SECRET;

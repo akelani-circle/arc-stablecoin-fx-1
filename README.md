@@ -28,8 +28,7 @@ This sample app demonstrates stablecoin FX swaps between USDC and EURC using the
 
 - Node.js 20+ and npm
 - Docker (for local Supabase)
-- A [Circle](https://console.circle.com) account with API key + entity secret
-- A Circle App Kit `KIT_KEY`
+- A [Circle](https://console.circle.com) account with API key + entity secret. The same API key also authenticates App Kit swaps, so no separate kit key is needed
 
 ## Getting Started
 
@@ -109,8 +108,7 @@ CIRCLE_API_KEY=
 CIRCLE_ENTITY_SECRET=
 CIRCLE_BLOCKCHAIN=ARC-TESTNET
 
-# Circle App Kit
-KIT_KEY=
+# Circle App Kit (swaps use CIRCLE_API_KEY above)
 NEXT_PUBLIC_ARC_CHAIN=Arc_Testnet
 
 # Optional — webhook auth
@@ -126,10 +124,9 @@ APP_FEE_RECIPIENT=
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL. From `npm run db:status` for local dev. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | Supabase publishable key. From `npm run db:status` for local dev. |
 | `SUPABASE_SECRET_KEY` | Server-side, secret | Supabase secret key, used only by the admin client; never exposed to the browser. |
-| `CIRCLE_API_KEY` | Server-side, secret | Circle Developer-Controlled Wallets API key. |
+| `CIRCLE_API_KEY` | Server-side, secret | Circle API key. Used for Developer-Controlled Wallets, for webhook signature lookups, and to authenticate App Kit swaps. It is the only Circle credential the app needs besides the entity secret. |
 | `CIRCLE_ENTITY_SECRET` | Server-side, secret | 32-byte hex (64 chars) entity secret. Must be registered with Circle once before use. |
 | `CIRCLE_BLOCKCHAIN` | Server-side | Circle blockchain identifier. Defaults to `ARC-TESTNET`. |
-| `KIT_KEY` | Server-side, secret | Circle App Kit key used for FX swaps. Being deprecated on the SDK side in favor of a unified `apiKey` field that will accept either a kit key or a plain API key — `KIT_KEY` stays supported until it's removed. |
 | `NEXT_PUBLIC_ARC_CHAIN` | Public | App Kit chain identifier. Defaults to `Arc_Testnet`. |
 | `CIRCLE_WEBHOOK_SECRET` | Server-side, secret | Optional extra layer. `/api/webhooks/circle` always requires Circle's signature; if this is set, it also requires it as a bearer token. |
 | `APP_FEE_BPS` | Server-side | Platform fee in basis points applied to every swap. Defaults to `25` (0.25%). |
@@ -175,7 +172,7 @@ Behaviour changes:
 
 This sample application:
 - Assumes testnet usage only, and is not intended for production use without modification
-- Handles secrets (`CIRCLE_ENTITY_SECRET`, `SUPABASE_SECRET_KEY`, `KIT_KEY`) via server-only environment variables, never exposed to the client
+- Handles secrets (`CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET`, `SUPABASE_SECRET_KEY`) via server-only environment variables, never exposed to the client
 - Verifies Circle's signature on every webhook, and optionally a shared bearer secret (`CIRCLE_WEBHOOK_SECRET`) on top
 - Answers webhooks right away and refreshes the balance afterwards, because Circle gives the endpoint 5 seconds to respond. Circle also publishes the IP addresses its wallet webhooks come from (see its webhook notifications guide); if your host exposes the real client address, you can allowlist them as an extra layer
 - Validates every server action input, stores only sanitised errors, and rate limits the calls that spend Circle quota — per server instance, so a multi-instance deployment needs a shared store
