@@ -16,20 +16,5 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { NextConfig } from "next";
-
-// Applied to every route. No Content-Security-Policy here: Next.js needs per-request nonces for
-// its inline scripts, so a static one would either break the app or be too loose to help.
-export const securityHeaders = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-];
-
-const nextConfig: NextConfig = {
-  async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
-  },
-};
-
-export default nextConfig;
+// Stand-in for the `server-only` package, which throws when imported outside a server build.
+export {};

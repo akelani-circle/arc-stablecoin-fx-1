@@ -55,7 +55,8 @@ export function formatAmount(value: string | number, decimals = 6): string {
 }
 
 export function isPositiveDecimal(s: string): boolean {
-  return /^\d+(\.\d+)?$/.test(s) && Number(s) > 0;
+  // At most 6 decimals, like the token: the server rejects more (see src/lib/swap-input.ts).
+  return /^\d+(\.\d{1,6})?$/.test(s) && Number(s) > 0;
 }
 
 export const CIRCLE_FAUCET_URL = "https://faucet.circle.com/";

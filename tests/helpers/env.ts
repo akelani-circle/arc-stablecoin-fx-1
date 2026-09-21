@@ -16,20 +16,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { NextConfig } from "next";
-
-// Applied to every route. No Content-Security-Policy here: Next.js needs per-request nonces for
-// its inline scripts, so a static one would either break the app or be too loose to help.
-export const securityHeaders = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-];
-
-const nextConfig: NextConfig = {
-  async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
-  },
-};
-
-export default nextConfig;
+// Import first: the app reads these when its config module loads.
+process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
+process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+process.env.NEXT_PUBLIC_ARC_CHAIN = "Arc_Testnet";
+process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
+process.env.CIRCLE_API_KEY = "TEST_API_KEY:aaaa:bbbb";
+process.env.CIRCLE_ENTITY_SECRET = "0".repeat(64);
+process.env.KIT_KEY = "KIT_KEY:test";
+process.env.APP_FEE_BPS = "25";
+process.env.APP_FEE_RECIPIENT = "0x000000000000000000000000000000000000dEaD";
+delete process.env.CIRCLE_WEBHOOK_SECRET;
