@@ -18,10 +18,12 @@
 
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createEOAWallet } from "@/lib/circle/wallets";
+import { createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,6 +33,13 @@ const credentialsSchema = z.object({
 });
 
 export type AuthState = { error?: string };
+
+// Every sign-up creates a Circle wallet set and wallet on the app's account, and the form is
+// open to anyone, so an unauthenticated script could otherwise create them without limit.
+// Per client address, plus a global ceiling for when addresses are spoofed or rotated. In
+// memory: it bounds one server instance (see src/lib/rate-limit.ts).
+const signUpPerClient = createRateLimiter({ limit: 5, windowMs: 10 * 60_000 });
+const signUpGlobal = createRateLimiter({ limit: 100, windowMs: 10 * 60_000 });
 
 export async function signIn(_: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = credentialsSchema.safeParse({
@@ -57,6 +66,12 @@ export async function signUp(_: AuthState, formData: FormData): Promise<AuthStat
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  const forwarded = (await headers()).get("x-forwarded-for");
+  const client = forwarded?.split(",")[0]?.trim() || "unknown";
+  if (!signUpPerClient(client).ok || !signUpGlobal("all").ok) {
+    return { error: "Too many sign-ups right now. Please try again in a few minutes." };
+  }
+
   const supabase = await createClient();
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp(parsed.data);
   if (signUpError || !signUpData.user) {
@@ -72,7 +87,8 @@ export async function signUp(_: AuthState, formData: FormData): Promise<AuthStat
     const { error: profileError } = await admin.from("profiles").insert({
       id: userId,
       circle_wallet_id: wallet.id,
-      wallet_address: wallet.address,
+      // Lower-cased: the unique index is on lower(wallet_address), and lookups compare lower-case.
+      wallet_address: wallet.address.toLowerCase(),
     });
     if (profileError) throw new Error(profileError.message);
 
@@ -82,8 +98,9 @@ export async function signUp(_: AuthState, formData: FormData): Promise<AuthStat
     if (balanceError) throw new Error(balanceError.message);
   } catch (err) {
     await admin.auth.admin.deleteUser(userId).catch(() => {});
-    const message = err instanceof Error ? err.message : "Wallet provisioning failed";
-    return { error: `Could not provision Circle wallet: ${message}` };
+    // The raw message can carry Circle request details; log it, show something generic.
+    console.error("[signUp] wallet provisioning failed:", err instanceof Error ? err.message : err);
+    return { error: "We could not set up your wallet. Please try again in a moment." };
   }
 
   redirect("/dashboard");
