@@ -21,7 +21,7 @@ import "server-only";
 import { AppKit, SwapChain } from "@circle-fin/app-kit";
 import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 
-import { clientEnv, serverEnv } from "@/lib/config";
+import { appFeeBps, clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
 
 // Swaps authenticate with CIRCLE_API_KEY.
@@ -88,7 +88,7 @@ export async function estimateSwap({
   const outNum = Number(amountOut);
   const effectiveRate = inNum > 0 ? (outNum / inNum).toString() : "0";
 
-  return { amountOut, appFeeBps: env.APP_FEE_BPS, effectiveRate };
+  return { amountOut, appFeeBps: appFeeBps(env), effectiveRate };
 }
 
 export type ExecuteInput = QuoteInput & {
@@ -116,7 +116,7 @@ export async function executeSwap({
     ...(stopLimit ? { stopLimit } : {}),
     // The SDK rejects a custom fee of 0 bps (it must be above 0 and at most 10000), so with
     // APP_FEE_BPS=0 the fee is left out instead of failing every swap.
-    ...(env.APP_FEE_BPS > 0
+    ...(env.APP_FEE_BPS > 0 && env.APP_FEE_RECIPIENT
       ? { customFee: { percentageBps: env.APP_FEE_BPS, recipientAddress: env.APP_FEE_RECIPIENT } }
       : {}),
   };
