@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { after } from "next/server";
 import { z } from "zod";
 
 import { getFxBalances } from "@/lib/circle/wallets";
+import { safeEqual, verifyCircleSignature } from "@/lib/circle/webhook-signature";
 import { serverEnv } from "@/lib/config";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -38,22 +40,37 @@ const notificationSchema = z.object({
     .passthrough(),
 });
 
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
 export async function POST(request: Request) {
   const env = serverEnv();
 
-  // If a webhook secret is configured, require it in the Authorization header.
-  if (env.CIRCLE_WEBHOOK_SECRET) {
-    const auth = request.headers.get("Authorization");
-    if (auth !== `Bearer ${env.CIRCLE_WEBHOOK_SECRET}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-  }
-
+  // Circle signs every notification. The old check only compared a bearer token, and only if
+  // CIRCLE_WEBHOOK_SECRET happened to be set (it is optional, and Circle does not send one),
+  // so by default anyone could post notifications. The signature is now always required.
   let rawBody: string;
   try {
     rawBody = await request.text();
   } catch {
     return new Response("Bad Request", { status: 400 });
+  }
+
+  const verified = await verifyCircleSignature(
+    rawBody,
+    request.headers.get("x-circle-signature"),
+    request.headers.get("x-circle-key-id"),
+    env.CIRCLE_API_KEY,
+  );
+  if (!verified) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  // Optional extra layer, for deployments that put a secret in front of the endpoint.
+  if (env.CIRCLE_WEBHOOK_SECRET) {
+    const auth = request.headers.get("Authorization") ?? "";
+    if (!safeEqual(auth, `Bearer ${env.CIRCLE_WEBHOOK_SECRET}`)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
   }
 
   let body: unknown;
@@ -69,25 +86,29 @@ export async function POST(request: Request) {
   }
 
   const { notificationType, notification } = parsed.data;
-  console.log("[webhook/circle] type=%s state=%s walletId=%s", notificationType, notification.state, notification.walletId);
 
-  // CONFIRMED = balance already credited by Circle on L2 chains like Arc Testnet.
-  // COMPLETE  = final on-chain settlement. Handle both so we never miss an update.
+  // CONFIRMED = balance already credited by Circle (soft finality on L2s like Arc Testnet).
+  // COMPLETE  = final settlement. Handle both so we never miss an update. Circle's reference
+  // lists the state as COMPLETE, but its webhook guide and example payload say COMPLETED, so
+  // both spellings are accepted.
   const isSettled =
-    notification.state === "CONFIRMED" || notification.state === "COMPLETE";
+    notification.state === "CONFIRMED" ||
+    notification.state === "COMPLETE" ||
+    notification.state === "COMPLETED";
 
   if (notificationType === "transactions.inbound" && isSettled) {
-    await handleInboundComplete(notification.walletId, notification.destinationAddress);
+    // Circle gives the endpoint 5 seconds to answer. The refresh calls Circle and the
+    // database, so it runs after the response is sent. It is idempotent (it stores the
+    // current balance), so a repeated notification does no harm.
+    const { walletId, destinationAddress } = notification;
+    after(() => handleInboundComplete(walletId, destinationAddress));
   }
 
   return new Response("OK", { status: 200 });
 }
 
 async function handleInboundComplete(walletId?: string, destinationAddress?: string) {
-  if (!walletId && !destinationAddress) {
-    console.warn("[webhook/circle] notification has neither walletId nor destinationAddress — skipping");
-    return;
-  }
+  if (!walletId && !destinationAddress) return;
 
   try {
     const admin = createAdminClient();
@@ -104,23 +125,20 @@ async function handleInboundComplete(walletId?: string, destinationAddress?: str
       profile = data ?? null;
     }
 
-    if (!profile && destinationAddress) {
+    // ilike, because rows written before addresses were lower-cased may be mixed case. The
+    // value is checked to be plain hex first: % and _ are wildcards in LIKE.
+    if (!profile && destinationAddress && ADDRESS.test(destinationAddress)) {
       const { data } = await admin
         .from("profiles")
         .select("id, circle_wallet_id")
-        .eq("wallet_address", destinationAddress.toLowerCase())
+        .ilike("wallet_address", destinationAddress)
         .maybeSingle();
       profile = data ?? null;
     }
 
-    if (!profile) {
-      console.warn("[webhook/circle] no profile matched walletId=%s destinationAddress=%s", walletId, destinationAddress);
-      return;
-    }
+    if (!profile) return;
 
-    console.log("[webhook/circle] updating balance for userId=%s", profile.id);
     const balances = await getFxBalances(profile.circle_wallet_id);
-    console.log("[webhook/circle] fetched balances", balances);
 
     const { error: upsertError } = await admin.from("wallet_balances").upsert({
       user_id: profile.id,
@@ -128,11 +146,9 @@ async function handleInboundComplete(walletId?: string, destinationAddress?: str
       eurc: balances.EURC,
     });
     if (upsertError) {
-      console.error("[webhook/circle] upsert failed", upsertError.message);
-    } else {
-      console.log("[webhook/circle] balance updated ok");
+      console.error("[webhook/circle] balance upsert failed:", upsertError.message);
     }
   } catch (err) {
-    console.error("[webhook/circle] balance update failed", err);
+    console.error("[webhook/circle] balance update failed:", err instanceof Error ? err.message : err);
   }
 }
