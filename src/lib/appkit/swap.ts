@@ -1,3 +1,21 @@
+/**
+ * Copyright 2026 Circle Internet Group, Inc.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import "server-only";
 
 import { AppKit, SwapChain } from "@circle-fin/app-kit";
@@ -5,6 +23,8 @@ import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 
 import { appFeeBps, clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
+
+// Swaps authenticate with CIRCLE_API_KEY.
 
 let cachedKit: AppKit | null = null;
 let cachedAdapter: ReturnType<typeof createCircleWalletsAdapter> | null = null;
@@ -60,7 +80,7 @@ export async function estimateSwap({
     tokenIn,
     tokenOut,
     amountIn,
-    config: { kitKey: env.KIT_KEY },
+    config: { apiKey: env.CIRCLE_API_KEY },
   });
 
   const amountOut = result.estimatedOutput.amount;
@@ -91,15 +111,14 @@ export async function executeSwap({
 }: ExecuteInput): Promise<ExecuteResult> {
   const env = serverEnv();
   const baseConfig = {
-    kitKey: env.KIT_KEY,
+    apiKey: env.CIRCLE_API_KEY,
     slippageBps,
     ...(stopLimit ? { stopLimit } : {}),
-    customFee: env.APP_FEE_RECIPIENT
-      ? {
-          percentageBps: env.APP_FEE_BPS,
-          recipientAddress: env.APP_FEE_RECIPIENT,
-        }
-      : undefined,
+    // The SDK rejects a custom fee of 0 bps (it must be above 0 and at most 10000), so with
+    // APP_FEE_BPS=0 the fee is left out instead of failing every swap.
+    ...(env.APP_FEE_BPS > 0 && env.APP_FEE_RECIPIENT
+      ? { customFee: { percentageBps: env.APP_FEE_BPS, recipientAddress: env.APP_FEE_RECIPIENT } }
+      : {}),
   };
   const params = {
     from: { adapter: adapter(), chain: chain(), address: walletAddress },
@@ -121,16 +140,10 @@ export async function executeSwap({
         config: { ...baseConfig, allowanceStrategy: "approve" },
       });
     } else {
-      const cause = (err as Record<string, unknown>)?.cause as Record<string, unknown> | undefined;
-      const trace = cause?.trace as Record<string, unknown> | undefined;
-      const rawError = trace?.rawError as Record<string, unknown> | undefined;
-      console.error("[executeSwap] kit().swap() failed — top-level:", String(err));
-      console.error("[executeSwap] cause.trace.chain:", trace?.chain);
-      console.error("[executeSwap] cause.trace.rawError (string):", String(rawError));
-      console.error("[executeSwap] cause.trace.rawError.message:", rawError?.message);
-      console.error("[executeSwap] cause.trace.rawError.name:", rawError?.name);
-      console.error("[executeSwap] cause.trace.rawError.stack:", rawError?.stack);
-      console.error("[executeSwap] cause.trace.rawError (full JSON):", JSON.stringify(rawError, Object.getOwnPropertyNames(rawError ?? {})));
+      // One line: the SDK's raw error can carry request details, so it is logged here on the
+      // server and never shown to the user (see toUserFacingError).
+      const cause = (err as { cause?: { message?: unknown } })?.cause?.message;
+      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${String(cause)}` : "");
       throw err;
     }
   }

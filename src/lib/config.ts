@@ -1,3 +1,21 @@
+/**
+ * Copyright 2026 Circle Internet Group, Inc.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { z } from "zod";
 
 const serverSchema = z.object({
@@ -5,7 +23,6 @@ const serverSchema = z.object({
   CIRCLE_ENTITY_SECRET: z.string().regex(/^[0-9a-f]{64}$/, "must be 32 bytes hex (64 chars)"),
   CIRCLE_BLOCKCHAIN: z.string().default("ARC-TESTNET"),
   CIRCLE_WEBHOOK_SECRET: z.string().min(1).optional(),
-  KIT_KEY: z.string().min(1),
   APP_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(25),
   // A blank value (as in .env.example) counts as unset.
   APP_FEE_RECIPIENT: z.preprocess(
