@@ -161,7 +161,7 @@ Apply the new migration to an existing database:
 
 ```bash
 supabase migration up      # local
-supabase db push           # linked project
+supabase db push --remote  # linked project (CLI v3 targets the local stack by default)
 ```
 
 `20260919120000_swap_guards.sql` adds a unique index that allows one pending or submitted swap
