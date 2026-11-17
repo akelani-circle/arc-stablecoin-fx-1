@@ -42,3 +42,7 @@ circle-recovery.dat
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# written by `next dev` when it detects an AI coding agent (CLAUDE.md only before Next 16.4)
+/AGENTS.md
+/CLAUDE.md

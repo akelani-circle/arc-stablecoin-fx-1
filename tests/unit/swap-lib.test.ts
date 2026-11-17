@@ -60,3 +60,20 @@ describe("executeSwap config", () => {
     expect(config).toMatchObject({ slippageBps: 50, stopLimit: "9.5" });
   });
 });
+
+describe("executeSwap errors", () => {
+  it("logs the error App Kit wraps, which it keeps at cause.trace.rawError", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.resetModules();
+    mockSdk();
+    const { executeSwap } = await import("@/lib/appkit/swap");
+    const kitError = Object.assign(new Error("Insufficient USDC balance on Arc_Testnet"), {
+      cause: { trace: { rawError: new Error("transfer amount exceeds balance"), token: "USDC" } },
+    });
+    swap.mockRejectedValue(kitError);
+    await expect(
+      executeSwap({ walletAddress: "0x1", tokenIn: "USDC", tokenOut: "EURC", amountIn: "10", slippageBps: 50 }),
+    ).rejects.toBe(kitError);
+    expect(error.mock.calls[0].join(" ")).toContain("| cause: transfer amount exceeds balance");
+  });
+});

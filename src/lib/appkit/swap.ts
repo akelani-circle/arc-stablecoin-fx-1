@@ -142,8 +142,8 @@ export async function executeSwap({
     } else {
       // One line: the SDK's raw error can carry request details, so it is logged here on the
       // server and never shown to the user (see toUserFacingError).
-      const cause = (err as { cause?: { message?: unknown } })?.cause?.message;
-      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${String(cause)}` : "");
+      const cause = causeMessage(err);
+      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${cause}` : "");
       throw err;
     }
   }
@@ -152,6 +152,15 @@ export async function executeSwap({
     amountOut: result.amountOut,
     txHash: result.txHash,
   };
+}
+
+// App Kit errors (KitError) keep the error they wrap at cause.trace.rawError, and cause itself
+// has no message. Only the message is logged: a wrapped HTTP error can carry request headers.
+function causeMessage(err: unknown): string | undefined {
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  const raw = cause instanceof Error ? cause : (cause as { trace?: { rawError?: unknown } } | undefined)?.trace?.rawError;
+  if (raw instanceof Error) return raw.message;
+  return typeof raw === "string" ? raw : undefined;
 }
 
 function isUndeployedWalletError(err: unknown): boolean {

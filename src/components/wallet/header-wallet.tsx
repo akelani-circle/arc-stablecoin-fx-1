@@ -25,7 +25,7 @@ import { toast } from "sonner";
 import { refreshBalances } from "@/app/(app)/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { CIRCLE_FAUCET_URL, formatAmount } from "@/lib/fx";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, subscribeAsUser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 type Balances = { usdc: string; eurc: string };
@@ -78,18 +78,18 @@ export function HeaderBalances({
   // Supabase Realtime — fires immediately when the DB row changes.
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`wallet_balances_header:${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "wallet_balances", filter: `user_id=eq.${userId}` },
-        (payload) => {
-          const row = payload.new as { usdc: string | number; eurc: string | number };
-          applyBalances.current(String(row.usdc), String(row.eurc));
-        },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return subscribeAsUser(supabase, () =>
+      supabase
+        .channel(`wallet_balances_header:${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "wallet_balances", filter: `user_id=eq.${userId}` },
+          (payload) => {
+            const row = payload.new as { usdc: string | number; eurc: string | number };
+            applyBalances.current(String(row.usdc), String(row.eurc));
+          },
+        ),
+    );
   }, [userId]);
 
   // Polling fallback — keeps the balance fresh even when Realtime is unavailable

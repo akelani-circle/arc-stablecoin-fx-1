@@ -54,7 +54,22 @@ export async function signIn(_: AuthState, formData: FormData): Promise<AuthStat
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { error: error.message };
 
-  redirect("/dashboard");
+  redirect(safeNextPath(formData.get("next")));
+}
+
+// Where to go after sign-in: the page the proxy sent the user away from (`/login?next=...`).
+// Only a path on this site. The URL parser is the check, because browsers also read "//host",
+// "/\host" and paths with tabs or newlines in them as another site.
+function safeNextPath(value: FormDataEntryValue | null): string {
+  if (typeof value !== "string" || !value.startsWith("/")) return "/dashboard";
+  const base = "http://localhost";
+  try {
+    const url = new URL(value, base);
+    if (url.origin === base) return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    // Not a URL: fall through.
+  }
+  return "/dashboard";
 }
 
 export async function signUp(_: AuthState, formData: FormData): Promise<AuthState> {
@@ -72,14 +87,23 @@ export async function signUp(_: AuthState, formData: FormData): Promise<AuthStat
     return { error: "Too many sign-ups right now. Please try again in a few minutes." };
   }
 
+  // Before the auth user exists: if the server config is broken this throws, and nothing is
+  // left behind. Created after sign-up, it threw outside the try below, so the rollback never
+  // ran and the user was stuck with no profile or wallet.
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    console.error("[signUp] server is not configured:", err instanceof Error ? err.message : err);
+    return { error: "We could not set up your wallet. Please try again in a moment." };
+  }
+
   const supabase = await createClient();
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp(parsed.data);
   if (signUpError || !signUpData.user) {
     return { error: signUpError?.message ?? "Sign up failed" };
   }
   const userId = signUpData.user.id;
-
-  const admin = createAdminClient();
 
   try {
     const wallet = await createEOAWallet(userId);

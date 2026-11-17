@@ -25,7 +25,8 @@
 export function toUserFacingError(error: unknown, fallback = "The swap could not be completed. Please try again."): string {
   const msg = (error instanceof Error ? error.message : typeof error === "string" ? error : "").toLowerCase();
 
-  if (/insufficient (funds|balance)|exceeds (the )?balance|not enough/.test(msg)) {
+  // App Kit names the token: "Insufficient USDC balance on Arc_Testnet", "Insufficient token balance".
+  if (/insufficient (\w+ )?(funds|balance)|exceeds (the )?balance|not enough/.test(msg)) {
     return "Insufficient balance for this swap.";
   }
   if (/slippage|price impact|stop ?limit|min(imum)? (out|received|amount)/.test(msg)) {

@@ -60,14 +60,10 @@ export function isPositiveDecimal(s: string): boolean {
   return /^\d+(\.\d{1,6})?$/.test(s) && Number(s) > 0;
 }
 
+// The faucet does not read an address or token from the URL, so this is the plain page.
 export const CIRCLE_FAUCET_URL = "https://faucet.circle.com/";
 
-export function faucetUrl(address: string, token: FxToken): string {
-  const params = new URLSearchParams({ address, token });
-  return `${CIRCLE_FAUCET_URL}?${params.toString()}`;
-}
-
-export const ARC_EXPLORER_TX_URL = "https://testnet.arcscan.app/tx";
+export const ARC_EXPLORER_TX_URL = "https://explorer.testnet.arc.io/tx";
 
 export function explorerTxUrl(hash: string): string {
   return `${ARC_EXPLORER_TX_URL}/${hash}`;

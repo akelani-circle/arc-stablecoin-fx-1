@@ -25,7 +25,7 @@ import { ArrowDown, Settings2 } from "lucide-react";
 
 import { executeSwapAction, quoteSwap, type QuoteState } from "@/app/(app)/dashboard/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -47,13 +47,15 @@ import {
 import {
   applySlippageFloor,
   bpsToPercent,
+  CIRCLE_FAUCET_URL,
   formatAmount,
   isPositiveDecimal,
   otherToken,
   SLIPPAGE_PRESETS_BPS,
   type FxToken,
 } from "@/lib/fx";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, subscribeAsUser } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type Balances = { usdc: string; eurc: string };
 
@@ -91,25 +93,23 @@ export function SwapPanel({ userId, balances: initialBalances }: { userId: strin
 
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`wallet_balances_swap:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "wallet_balances",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.new as { usdc: string | number; eurc: string | number };
-          setBalances({ usdc: String(row.usdc), eurc: String(row.eurc) });
-        },
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeAsUser(supabase, () =>
+      supabase
+        .channel(`wallet_balances_swap:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "wallet_balances",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.new as { usdc: string | number; eurc: string | number };
+            setBalances({ usdc: String(row.usdc), eurc: String(row.eurc) });
+          },
+        ),
+    );
   }, [userId]);
 
   useEffect(() => {
@@ -348,17 +348,24 @@ export function SwapPanel({ userId, balances: initialBalances }: { userId: strin
 
         {/* Swap button */}
         <div className="p-3 pt-2">
-          <Button
-            className="w-full h-12 rounded-xl text-base font-semibold"
-            disabled={!canExecute}
-            onClick={() => setOpen(true)}
-          >
-            {executing
-              ? "Executing…"
-              : Number(balanceFor(from)) === 0
-                ? `Get ${from} from the faucet`
-                : `Swap ${from} → ${to}`}
-          </Button>
+          {Number(balanceFor(from)) === 0 && !executing ? (
+            <a
+              href={CIRCLE_FAUCET_URL}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants(), "w-full h-12 rounded-xl text-base font-semibold")}
+            >
+              Get {from} from the faucet
+            </a>
+          ) : (
+            <Button
+              className="w-full h-12 rounded-xl text-base font-semibold"
+              disabled={!canExecute}
+              onClick={() => setOpen(true)}
+            >
+              {executing ? "Executing…" : `Swap ${from} → ${to}`}
+            </Button>
+          )}
         </div>
       </div>
 

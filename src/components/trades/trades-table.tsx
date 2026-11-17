@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { explorerTxUrl, formatAmount, type FxToken } from "@/lib/fx";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, subscribeAsUser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 export type SwapRow = {
@@ -53,6 +53,14 @@ type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = PAGE_SIZE_OPTIONS[0];
+// Passed to the Select as `items` too, so the trigger shows the label ("All"), not the value ("all").
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "submitted", label: "Submitted" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "failed", label: "Failed" },
+];
 const SELECT_COLS =
   "id, from_token, to_token, amount_in, quoted_out, min_out, status, tx_hash, created_at";
 
@@ -146,35 +154,33 @@ export function TradesTable({
   useEffect(() => {
     if (!realtimeEnabled) return;
     const supabase = createClient();
-    const channel = supabase
-      .channel(`swaps:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "swaps",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as SwapRow;
-            setRows((prev) => [row, ...prev].slice(0, pageSize));
-            setTotal((t) => t + 1);
-          } else if (payload.eventType === "UPDATE") {
-            const updated = payload.new as SwapRow;
-            setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-          } else if (payload.eventType === "DELETE") {
-            const old = payload.old as { id: string };
-            setRows((prev) => prev.filter((r) => r.id !== old.id));
-            setTotal((t) => Math.max(0, t - 1));
-          }
-        },
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeAsUser(supabase, () =>
+      supabase
+        .channel(`swaps:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "swaps",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT") {
+              const row = payload.new as SwapRow;
+              setRows((prev) => [row, ...prev].slice(0, pageSize));
+              setTotal((t) => t + 1);
+            } else if (payload.eventType === "UPDATE") {
+              const updated = payload.new as SwapRow;
+              setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+            } else if (payload.eventType === "DELETE") {
+              const old = payload.old as { id: string };
+              setRows((prev) => prev.filter((r) => r.id !== old.id));
+              setTotal((t) => Math.max(0, t - 1));
+            }
+          },
+        ),
+    );
   }, [userId, pageSize, realtimeEnabled]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -201,7 +207,7 @@ export function TradesTable({
           aria-label="Search by transaction hash"
         />
         <div className="flex items-center gap-2">
-          <Select value={statusFilter} onValueChange={(value) => {
+          <Select items={STATUS_FILTER_OPTIONS} value={statusFilter} onValueChange={(value) => {
             setStatusFilter(value ?? "all");
             setPage(1);
           }}>
@@ -209,11 +215,11 @@ export function TradesTable({
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="submitted">Submitted</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
+              {STATUS_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <span className="text-xs text-muted-foreground">Rows per page</span>
