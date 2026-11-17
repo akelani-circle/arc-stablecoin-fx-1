@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { explorerTxUrl, formatAmount, type FxToken } from "@/lib/fx";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, subscribeAsUser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 export type SwapRow = {
@@ -53,6 +53,14 @@ type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = PAGE_SIZE_OPTIONS[0];
+// Passed to the Select as `items` too, so the trigger shows the label ("All"), not the value ("all").
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "submitted", label: "Submitted" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "failed", label: "Failed" },
+];
 const SELECT_COLS =
   "id, from_token, to_token, amount_in, quoted_out, min_out, status, tx_hash, created_at";
 
@@ -78,6 +86,7 @@ export function TradesTable({
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<SortState>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -114,6 +123,9 @@ export function TradesTable({
         .select(SELECT_COLS, { count: "exact" })
         .eq("user_id", userId);
       if (debouncedSearch) q = q.ilike("tx_hash", `%${debouncedSearch}%`);
+      if (statusFilter !== "all") {
+        q = q.eq("status", statusFilter);
+      }
       if (sort) {
         q = q.order(sort.key, { ascending: sort.dir === "asc" });
         if (sort.key !== "created_at") q = q.order("created_at", { ascending: false });
@@ -136,41 +148,39 @@ export function TradesTable({
     return () => {
       cancelled = true;
     };
-  }, [userId, page, pageSize, sort, debouncedSearch]);
+  }, [userId, page, pageSize, sort, debouncedSearch, statusFilter]);
 
-  const realtimeEnabled = page === 1 && sort === null && debouncedSearch === "";
+  const realtimeEnabled = page === 1 && sort === null && debouncedSearch === "" && statusFilter === "all";
   useEffect(() => {
     if (!realtimeEnabled) return;
     const supabase = createClient();
-    const channel = supabase
-      .channel(`swaps:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "swaps",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as SwapRow;
-            setRows((prev) => [row, ...prev].slice(0, pageSize));
-            setTotal((t) => t + 1);
-          } else if (payload.eventType === "UPDATE") {
-            const updated = payload.new as SwapRow;
-            setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-          } else if (payload.eventType === "DELETE") {
-            const old = payload.old as { id: string };
-            setRows((prev) => prev.filter((r) => r.id !== old.id));
-            setTotal((t) => Math.max(0, t - 1));
-          }
-        },
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return subscribeAsUser(supabase, () =>
+      supabase
+        .channel(`swaps:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "swaps",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT") {
+              const row = payload.new as SwapRow;
+              setRows((prev) => [row, ...prev].slice(0, pageSize));
+              setTotal((t) => t + 1);
+            } else if (payload.eventType === "UPDATE") {
+              const updated = payload.new as SwapRow;
+              setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+            } else if (payload.eventType === "DELETE") {
+              const old = payload.old as { id: string };
+              setRows((prev) => prev.filter((r) => r.id !== old.id));
+              setTotal((t) => Math.max(0, t - 1));
+            }
+          },
+        ),
+    );
   }, [userId, pageSize, realtimeEnabled]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -197,6 +207,21 @@ export function TradesTable({
           aria-label="Search by transaction hash"
         />
         <div className="flex items-center gap-2">
+          <Select items={STATUS_FILTER_OPTIONS} value={statusFilter} onValueChange={(value) => {
+            setStatusFilter(value ?? "all");
+            setPage(1);
+          }}>
+            <SelectTrigger size="sm" className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <span className="text-xs text-muted-foreground">Rows per page</span>
           <Select value={String(pageSize)} onValueChange={(v) => changePageSize(Number(v))}>
             <SelectTrigger size="sm">
@@ -230,7 +255,9 @@ export function TradesTable({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {debouncedSearch ? "No matches." : "No trades yet."}
+                  {debouncedSearch || statusFilter !== "all"
+                    ? "No matching trades."
+                    : "No trades yet."}
                 </td>
               </tr>
             ) : (

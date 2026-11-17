@@ -22,7 +22,7 @@ import { revalidatePath } from "next/cache";
 
 import { estimateSwap, executeSwap } from "@/lib/appkit/swap";
 import { getFxBalances } from "@/lib/circle/wallets";
-import { serverEnv } from "@/lib/config";
+import { appFeeBps, serverEnv } from "@/lib/config";
 import { type FxToken } from "@/lib/fx";
 import { createRateLimiter } from "@/lib/rate-limit";
 import { appFeeAmount, executeSchema, quoteSchema } from "@/lib/swap-input";
@@ -80,7 +80,6 @@ export async function quoteSwap(input: {
   }
 
   try {
-    const env = serverEnv();
     const result = await estimateSwap({
       walletAddress: profile.wallet_address,
       tokenIn: parsed.data.from,
@@ -91,8 +90,8 @@ export async function quoteSwap(input: {
       ok: true,
       amountOut: result.amountOut,
       effectiveRate: result.effectiveRate,
-      appFeeBps: env.APP_FEE_BPS,
-      appFeeAmount: appFeeAmount(parsed.data.amountIn, env.APP_FEE_BPS),
+      appFeeBps: result.appFeeBps,
+      appFeeAmount: appFeeAmount(parsed.data.amountIn, result.appFeeBps),
     };
   } catch (err) {
     console.error("[quoteSwap] failed:", err instanceof Error ? err.message : err);
@@ -145,7 +144,7 @@ export async function executeSwapAction(input: {
       amount_in: parsed.data.amountIn,
       min_out: parsed.data.minOut ?? null,
       slippage_bps: parsed.data.slippageBps,
-      app_fee_bps: env.APP_FEE_BPS,
+      app_fee_bps: appFeeBps(env),
       status: "pending",
     })
     .select("id")

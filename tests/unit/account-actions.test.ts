@@ -22,8 +22,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { queryBuilder, queueTables } from "../helpers/supabase-mock";
 
-const userClient = { auth: { getUser: vi.fn(), signUp: vi.fn() }, from: vi.fn() };
+const userClient = { auth: { getUser: vi.fn(), signUp: vi.fn(), signInWithPassword: vi.fn() }, from: vi.fn() };
 const adminClient = { from: vi.fn(), auth: { admin: { deleteUser: vi.fn() } } };
+const createAdminClient = vi.fn();
 const getFxBalances = vi.fn();
 const createEOAWallet = vi.fn();
 const headerStore = new Headers();
@@ -32,7 +33,7 @@ const redirect = vi.fn((url: string) => {
 });
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => userClient }));
-vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => adminClient }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient }));
 vi.mock("@/lib/circle/wallets", () => ({ getFxBalances, createEOAWallet }));
 vi.mock("next/headers", () => ({ headers: async () => headerStore }));
 vi.mock("next/navigation", () => ({ redirect }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   redirect.mockImplementation((url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   });
+  createAdminClient.mockImplementation(() => adminClient);
   headerStore.delete("x-forwarded-for");
 });
 
@@ -147,6 +149,17 @@ describe("signUp", () => {
     expect(adminClient.auth.admin.deleteUser).toHaveBeenCalledWith(USER.id);
   });
 
+  it("creates no auth user when the server config is broken", async () => {
+    createAdminClient.mockImplementation(() => {
+      throw new Error("Invalid server environment:\nCIRCLE_WEBHOOK_SECRET: Too small");
+    });
+    const { signUp } = await load();
+    const result = await signUp({}, form());
+    expect(result).toEqual({ error: "We could not set up your wallet. Please try again in a moment." });
+    expect(userClient.auth.signUp).not.toHaveBeenCalled();
+    expect(createEOAWallet).not.toHaveBeenCalled();
+  });
+
   it("rejects weak input before creating anything", async () => {
     const { signUp } = await load();
     expect((await signUp({}, form("not-an-email"))).error).toBeDefined();
@@ -178,5 +191,48 @@ describe("signUp", () => {
     }
     headerStore.set("x-forwarded-for", "192.0.2.1");
     expect((await signUp({}, form())).error).toMatch(/Too many sign-ups/);
+  });
+});
+
+describe("signIn", () => {
+  async function load() {
+    vi.resetModules();
+    return import("@/app/(auth)/actions");
+  }
+
+  function form(next?: string) {
+    const f = new FormData();
+    f.set("email", "a@example.com");
+    f.set("password", "correct horse");
+    if (next !== undefined) f.set("next", next);
+    return f;
+  }
+
+  it("returns to the page the user was sent away from", async () => {
+    userClient.auth.signInWithPassword.mockResolvedValue({ error: null });
+    const { signIn } = await load();
+    await expect(signIn({}, form("/dashboard/history?page=2"))).rejects.toThrow("NEXT_REDIRECT:/dashboard/history?page=2");
+  });
+
+  it("goes to the dashboard without a next path", async () => {
+    userClient.auth.signInWithPassword.mockResolvedValue({ error: null });
+    const { signIn } = await load();
+    await expect(signIn({}, form())).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+  });
+
+  it.each(["https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", "dashboard", "javascript:alert(1)"])(
+    "never follows %j off the site",
+    async (next) => {
+      userClient.auth.signInWithPassword.mockResolvedValue({ error: null });
+      const { signIn } = await load();
+      await expect(signIn({}, form(next))).rejects.toThrow(/^NEXT_REDIRECT:\/dashboard$/);
+    },
+  );
+
+  it("shows the auth error and does not redirect", async () => {
+    userClient.auth.signInWithPassword.mockResolvedValue({ error: { message: "Invalid login credentials" } });
+    const { signIn } = await load();
+    expect(await signIn({}, form("/dashboard/history"))).toEqual({ error: "Invalid login credentials" });
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

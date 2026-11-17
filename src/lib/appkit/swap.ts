@@ -21,7 +21,7 @@ import "server-only";
 import { AppKit, SwapChain } from "@circle-fin/app-kit";
 import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 
-import { clientEnv, serverEnv } from "@/lib/config";
+import { appFeeBps, clientEnv, serverEnv } from "@/lib/config";
 import type { FxToken } from "@/lib/fx";
 
 // Swaps authenticate with CIRCLE_API_KEY.
@@ -88,7 +88,7 @@ export async function estimateSwap({
   const outNum = Number(amountOut);
   const effectiveRate = inNum > 0 ? (outNum / inNum).toString() : "0";
 
-  return { amountOut, appFeeBps: env.APP_FEE_BPS, effectiveRate };
+  return { amountOut, appFeeBps: appFeeBps(env), effectiveRate };
 }
 
 export type ExecuteInput = QuoteInput & {
@@ -116,7 +116,7 @@ export async function executeSwap({
     ...(stopLimit ? { stopLimit } : {}),
     // The SDK rejects a custom fee of 0 bps (it must be above 0 and at most 10000), so with
     // APP_FEE_BPS=0 the fee is left out instead of failing every swap.
-    ...(env.APP_FEE_BPS > 0
+    ...(env.APP_FEE_BPS > 0 && env.APP_FEE_RECIPIENT
       ? { customFee: { percentageBps: env.APP_FEE_BPS, recipientAddress: env.APP_FEE_RECIPIENT } }
       : {}),
   };
@@ -142,8 +142,8 @@ export async function executeSwap({
     } else {
       // One line: the SDK's raw error can carry request details, so it is logged here on the
       // server and never shown to the user (see toUserFacingError).
-      const cause = (err as { cause?: { message?: unknown } })?.cause?.message;
-      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${String(cause)}` : "");
+      const cause = causeMessage(err);
+      console.error("[executeSwap] swap failed:", String(err), cause ? `| cause: ${cause}` : "");
       throw err;
     }
   }
@@ -152,6 +152,15 @@ export async function executeSwap({
     amountOut: result.amountOut,
     txHash: result.txHash,
   };
+}
+
+// App Kit errors (KitError) keep the error they wrap at cause.trace.rawError, and cause itself
+// has no message. Only the message is logged: a wrapped HTTP error can carry request headers.
+function causeMessage(err: unknown): string | undefined {
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  const raw = cause instanceof Error ? cause : (cause as { trace?: { rawError?: unknown } } | undefined)?.trace?.rawError;
+  if (raw instanceof Error) return raw.message;
+  return typeof raw === "string" ? raw : undefined;
 }
 
 function isUndeployedWalletError(err: unknown): boolean {

@@ -21,7 +21,12 @@ import Link from "next/link";
 import { LoginForm } from "./login-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const { next } = await searchParams;
   return (
     <Card>
       <CardHeader>
@@ -29,7 +34,7 @@ export default function LoginPage() {
         <CardDescription>Welcome back to Arc FX.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <LoginForm />
+        <LoginForm next={typeof next === "string" ? next : undefined} />
         <p className="text-sm text-muted-foreground">
           New here?{" "}
           <Link href="/register" className="font-medium text-foreground underline-offset-4 hover:underline">

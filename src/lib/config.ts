@@ -24,7 +24,11 @@ const serverSchema = z.object({
   CIRCLE_BLOCKCHAIN: z.string().default("ARC-TESTNET"),
   CIRCLE_WEBHOOK_SECRET: z.string().min(1).optional(),
   APP_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(25),
-  APP_FEE_RECIPIENT: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x-prefixed EVM address"),
+  // Optional: a blank value (as in .env.example) counts as unset, see withoutEmpty below.
+  APP_FEE_RECIPIENT: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x-prefixed EVM address")
+    .optional(),
   SUPABASE_SECRET_KEY: z.string().min(1),
 });
 
@@ -34,11 +38,18 @@ const clientSchema = z.object({
   NEXT_PUBLIC_ARC_CHAIN: z.string().default("Arc_Testnet"),
 });
 
+// An empty value (`CIRCLE_WEBHOOK_SECRET=`, as .env.example ships it) means "not set". Without
+// this, an optional variable left blank failed validation and took every server feature down,
+// and a blank variable with a default never got its default.
+function withoutEmpty(env: Record<string, string | undefined>) {
+  return Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ""));
+}
+
 let cachedServer: z.infer<typeof serverSchema> | null = null;
 
 export function serverEnv() {
   if (cachedServer) return cachedServer;
-  const parsed = serverSchema.safeParse(process.env);
+  const parsed = serverSchema.safeParse(withoutEmpty(process.env));
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Invalid server environment:\n${issues}`);
@@ -47,8 +58,15 @@ export function serverEnv() {
   return cachedServer;
 }
 
-export const clientEnv = clientSchema.parse({
-  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-  NEXT_PUBLIC_ARC_CHAIN: process.env.NEXT_PUBLIC_ARC_CHAIN,
-});
+// The fee is only charged when there's a recipient to send it to.
+export function appFeeBps(env: z.infer<typeof serverSchema>) {
+  return env.APP_FEE_RECIPIENT ? env.APP_FEE_BPS : 0;
+}
+
+export const clientEnv = clientSchema.parse(
+  withoutEmpty({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_ARC_CHAIN: process.env.NEXT_PUBLIC_ARC_CHAIN,
+  }),
+);

@@ -26,7 +26,8 @@ This sample app demonstrates stablecoin FX swaps between USDC and EURC using the
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- Node.js 22.18+ or 24+, and npm. `npm run wallet:generate` runs a TypeScript file directly, which
+  needs Node's built-in type stripping (on by default from 22.18). It fails on Node 20 and on 22 before 22.18.
 - Docker (for local Supabase)
 - A [Circle](https://console.circle.com) account with API key + entity secret. The same API key authenticates App Kit swaps
 
@@ -47,6 +48,10 @@ This sample app demonstrates stablecoin FX swaps between USDC and EURC using the
    This boots Postgres, Auth, etc. via the Supabase CLI and runs the migrations in
    `supabase/migrations/`. Use `npm run db:status` to print the local URLs and keys,
    `npm run db:reset` to wipe + re-migrate, and `npm run db:stop` to shut it down.
+
+   If you ran this project before, `db:start` reuses the old local database and does not apply
+   migrations added since. Run `npm run db:reset` (this deletes the local data) or
+   `npx supabase migration up` (see [Upgrading](#upgrading)).
 
 3. Set up environment variables:
 
@@ -71,6 +76,11 @@ This sample app demonstrates stablecoin FX swaps between USDC and EURC using the
    ```
 
    The app will be available at [http://localhost:3000](http://localhost:3000).
+
+6. Fund your wallet. Sign up, copy your wallet address from the header, and request testnet USDC
+   and EURC on Arc Testnet from the [Circle faucet](https://faucet.circle.com/). Swaps need real
+   testnet tokens. Gas on Arc is paid in USDC, so a EURC → USDC swap also needs a little USDC in
+   the wallet.
 
 ## How It Works
 
@@ -151,7 +161,7 @@ Apply the new migration to an existing database:
 
 ```bash
 supabase migration up      # local
-supabase db push           # linked project
+supabase db push --remote  # linked project (CLI v3 targets the local stack by default)
 ```
 
 `20260919120000_swap_guards.sql` adds a unique index that allows one pending or submitted swap

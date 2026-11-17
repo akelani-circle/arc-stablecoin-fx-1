@@ -24,6 +24,9 @@ describe("toUserFacingError", () => {
   it.each([
     ["Insufficient funds for transfer", "Insufficient balance for this swap."],
     ["amount exceeds balance", "Insufficient balance for this swap."],
+    ["Insufficient USDC balance on Arc_Testnet", "Insufficient balance for this swap."],
+    ["Insufficient token balance", "Insufficient balance for this swap."],
+    ["Insufficient native token on Arc_Testnet to cover gas fees", "The network fee could not be paid. Check your balance and try again."],
     ["Slippage exceeded", "The price moved beyond your slippage limit. Try again or raise the limit."],
     ["stop limit not met", "The price moved beyond your slippage limit. Try again or raise the limit."],
     ["intrinsic gas too low", "The network fee could not be paid. Check your balance and try again."],

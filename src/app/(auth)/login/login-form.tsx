@@ -38,11 +38,13 @@ function SubmitButton() {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, action] = useActionState(signIn, initial);
 
   return (
     <form action={action} className="space-y-4">
+      {/* Checked on the server: only a path on this site is followed. */}
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required />
